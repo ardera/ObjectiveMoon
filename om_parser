@@ -1,0 +1,259 @@
+local om_parser = {
+	tlist = {}
+}
+
+om_parser.tokenspecs = {
+	["TOK_COMMENT"] = {},
+	["TOK_EQUALS"] = {
+		needsLeft = {"TOK_NUMBER", "TOK_STRING", "TOK_NAME"},
+		needsRight = {"TOK_NUMBER", "TOK_STRING", "TOK_NAME"}
+	},
+	["TOK_ASSIGN"] = {
+		needsLeft = {"TOK_NAME"},
+		needsRight = {"TOK_NUMBER", "TOK_STRING", "TOK_NAME"}
+	},
+	["TOK_GT"] = {
+		needsLeft = {"TOK_NAME", "TOK_NUMBER"},
+		needsRight = {"TOK_NAME", "TOK_NUMBER"},
+	},
+	["TOK_GE"] = {
+		needsLeft = {"TOK_NAME", "TOK_NUMBER"},
+		needsRight = {"TOK_NAME", "TOK_NUMBER"}
+	},
+	["TOK_LT"] = {
+		needsLeft = {"TOK_NAME", "TOK_NUMBER"},
+		needsRight = {"TOK_NAME", "TOK_NUMBER"}
+	},
+	["TOK_LE"] = {
+		needsLeft = {"TOK_NAME", "TOK_NUMBER"},
+		needsRight = {"TOK_NAME", "TOK_NUMBER"}
+	},
+	["TOK_MUL"] = {
+		needsLeft = {"TOK_NAME", "TOK_NUMBER"},
+		needsRight = {"TOK_NAME", "TOK_NUMBER"}
+	},
+	["TOK_DIV"] = {
+		needsLeft = {"TOK_NAME", "TOK_NUMBER"},
+		needsRight = {"TOK_NAME", "TOK_NUMBER"}
+	},
+	["TOK_ADD"] = {
+		needsLeft = {"TOK_NAME", "TOK_NUMBER"},
+		needsRight = {"TOK_NAME", "TOK_NUMBER"}
+	},
+	["TOK_SUB"] = {
+		needsLeft = {"TOK_NAME", "TOK_NUMBER"},
+		needsRight = {"TOK_NAME", "TOK_NUMBER"}
+	},
+	["TOK_EQUALS"] = {
+		needsLeft = {"TOK_NAME", "TOK_NUMBER", "TOK_STRING"},
+		needsRight = {"TOK_NAME", "TOK_NUMBER", "TOK_STRING"}
+	},
+	["TOK_BRACKET_OPEN"] = {
+	},
+	["TOK_BRACKET_CLOSE"] = {
+	},
+	["TOK_PACKAGE"] = {
+		spaceLeft = 1,
+		needsRight = "TOK_NAME"
+	},
+	["TOK_IMPORT"] = {
+		spaceLeft = 1,
+		needsRight = "TOK_NAME"
+	},
+	["TOK_EXTENDS"] = {
+		spaceLeft = 1,
+		spaceRight = 1,
+		needsRight = "TOK_NAME"
+	},
+	["TOK_IMPLEMENTS"] = {
+		spaceLeft = 1,
+		spaceRight = 1,
+		needsRight = "TOK_NAME"
+	}
+}
+
+--[[
+	BEGIN PARSER
+]]
+
+function om_parser:lex(input)
+	om.lexer:resetState(input)
+	om.lexer:initialize()
+	while true do
+		local values = {om.lexer:lexer()}
+		self.tlist[#self.tlist + 1] = values
+	end
+end
+
+function om_parser:verify()
+	for a = 1, #self.tlist do
+		local t = self.tlist[a][1]
+		if self.tokenspecs[t] then
+			local spec = self.tokenspecs[t]
+			
+			if spec.spaceLeft then
+				for b = -1, -spec.spaceLeft, -1 do
+					if self.tlist[a + b] then
+						if self.tlist[a + b] ~= "TOK_SPACE" then
+							error("Unexpected Symbol")
+						end
+					end
+				end
+			end
+			
+			if spec.spaceRight then
+				for b = 1, spec.spaceRight do
+					if self.tlist[a + b] then
+						if self.tlist[a + b] ~= "TOK_SPACE" then
+							error("Unexpected Symbol")
+						end
+					end
+				end
+			end
+			
+			if spec.needsLeft then
+				local counter = 1
+				while true do
+					if self.tlist[a - counter] == spec.needsLeft then
+						break
+					elseif self.tlist[a - counter] ~= "TOK_SPACE" then
+						error("Unexpected Symbol")
+					end
+					local counter = counter + 1
+				end
+			end
+			
+			if spec.needsRight then
+				local counter = 1
+				while true do
+					if self.tlist[a - counter] == spec.needsRight then
+						break
+					elseif self.tlist[a - counter] ~= "TOK_SPACE" then
+						error("Unexpected Symbol")
+					end
+					local counter = counter + 1
+				end
+			end
+		end
+	end
+end
+
+function om_parser:unexpsym()
+	error("Error parsing tokens: Unexpected symbol")
+end
+
+function om_parser:parseBlock(pos)
+	local t = "TOK_SPACE"
+	local arg = nil
+	local tree = {}
+	local lf = {}
+	while true do
+		if t ~= "TOK_SPACE" then
+			if lf.tok == nil then
+				if t == "TOK_PRIVATE" then
+					lf = {acc = 2, tok = "assign", state = "m"}
+				elseif t == "TOK_PUBLIC" then
+					lf = {acc = 0, tok = "assign", state = "m"}
+				elseif t == "TOK_PROTECTED" then
+					lf = {acc = 1, tok = "assign", state = "m"}
+				elseif t == "TOK_FINAL" then
+					lf = {acc = 3, tok = "assign", state = "m", transiency = "final"}
+				elseif t == "TOK_I" then
+					lf = {acc = 3, tok = "assign", state = "m", statism = "static"}
+				elseif t == "TOK_TRANSIENT" then
+					lf = {acc = 3, tok = "assign", state = "m", transiency = "transient"}
+				elseif t == "TOK_NAME" then
+					lf = {acc = 3, tok = "assign", state = "n", type = arg}
+				elseif t == "TOK_NUMBER" then
+					lf = {acc = 3, tok = "assign", state = "n", atomtype = "number"}
+				elseif t == "TOK_BOOLEAN" then
+					lf = {acc = 3, tok = "assign", state = "n", atomtype = "boolean"}
+				elseif t == "TOK_STRING" then
+					lf = {acc = 3, tok = "assign", state = "n", atomtype = "string"}
+				elseif t == "TOK_MAP" then
+					lf = {acc = 3, tok = "assign", state = "n", atomtype = "map"}
+				elseif t == "TOK_CHAR" then
+					lf = {acc = 3, tok = "assign", state = "n", atomtype = "character"}
+				else
+					om.error.throwUnexpectedToken()
+				end
+			elseif lf.tok == "assign" then
+				if lf.state == "m" then
+					if t == "TOK_PRIVATE" then
+						lf.acc = 2
+					elseif t == "TOK_PUBLIC" then
+						lf.acc = 0
+					elseif t == "TOK_PROTECTED" then
+						lf.acc = 1
+					elseif t == "TOK_TRANSIENT" then
+						lf.transiency = "transient"
+					elseif t == "TOK_STATIC" then
+						lf.statism = "static"
+					elseif t == "TOK_FINAL" then
+						lf.transiency = "final"
+					elseif t == "TOK_NAME" then
+						lf.type = arg
+						lf.state = "n"
+					elseif t == "TOK_NUMBER" then
+						lf.atomtype = "number"
+						lf.state = "n"
+					elseif t == "TOK_BOOLEAN" then
+						lf.atomtype = "boolean"
+						lf.state = "n"
+					elseif t == "TOK_STRING" then
+						lf.atomtype = "boolean"
+						lf.state = "n"
+					elseif t == "TOK_CHAR" then
+						lf.atomtype = "character"
+						lf.state = "n"
+					elseif t == "TOK_MAP" then
+						lf.atomtype = "map"
+						lf.state = "n"
+					else
+						om.error.throwUnexpectedToken()
+					end
+				elseif lf.state == "n" then
+					if t == "TOK_NAME" then
+						lf.name = arg
+						lf.state = "s"
+					else
+						om.error.throwUnexpectedToken()
+					end
+				elseif lf.state == "s" then
+					if t == "TOK_ASSIGN" then
+						lf.state = "v"
+					else
+						om.error.throwUnexpectedToken()
+					end
+				elseif lf.state == "v" then
+					-- parse value
+				end
+			end
+		end
+		pos = pos + 1
+		t = self.tlist[pos][1]
+		arg = self.tlist[pos][2]
+	end
+end
+
+function om_parser:buildTree()
+	self:parseBlock(0)
+end
+
+function om_parser:buildBytecode()
+
+end
+
+function om_parser:loadstring(file)
+	self.input = om.input.new(file)
+	self:lex(input)
+	self:verify()
+	self:buildTree()
+	return loadstring(self:buildBytecode())
+end
+
+--[[
+	END PARSER
+]]
+
+return om_parser

@@ -1,0 +1,35 @@
+local function isFile(path)
+	if not fs.isDir(path) and fs.exists(path) then
+		return true
+	end
+	return false
+end
+
+local function loadModule(path, modulename)
+	assert(isFile(path), "Could not find module: " .. tostring(path))
+	local reader = fs.open(path, "r")
+	local content = reader.readAll()
+	reader.close()
+	local filefunction, err = loadstring(content)
+	if not filefunction then
+		error("Could not load module: " .. tostring(path) .. " Reason: " .. err)
+	end
+	local ret = {}
+	local ok, err = pcall(function() ret = filefunction() end)
+	if not ok then
+		error("Could not execute module: " .. tostring(path) .. " Reason: " .. err)
+	end
+	rawset(_G.om, modulename, ret)
+end
+
+rawset(_G, "om", {})
+
+loadModule("om_error", "error")
+loadModule("om_input", "input")
+loadModule("om_lexer", "lexer")
+loadModule("om_parser", "parser")
+
+rawset(_G.om, "loadstring", function(...)
+	return om.parser:loadstring(...)
+end)
+

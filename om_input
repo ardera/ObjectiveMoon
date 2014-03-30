@@ -1,0 +1,136 @@
+local args = {...}
+local api = args[1]
+
+local om_input = {}
+local om_input_api = {}
+
+local function isFile(path)
+	if not fs.isDir(path) and fs.exists(path) then
+		return true
+	end
+	return false
+end
+
+--[[
+	BEGIN INPUT API
+]]
+
+function om_input.new(path)
+	assert(isFile(path), "Could not create input instance: Could not open file")
+	
+	local inp = {
+		path = path,
+		reader = fs.open(path, "rb"),
+		position = 1,
+		buffer = "",
+		bufferstart = 1,
+		closed = false,
+		filesize = fs.getSize(path)
+	}
+	
+	setmetatable(inp, {__index = om_input_api, __metatable = "protected"})
+	
+	return inp
+end
+
+function om_input_api:flush()
+	assert(not self.closed, "Could not flush: Stream closed")
+	self.buffer = "",
+	self.bufferstart = nil
+end
+
+function om_input_api:flushGetBuffer()
+	assert(not self.closed, "Could not flush and return buffer: Stream closed")
+	local buff = self.buffer
+	self:flush()
+	return buff
+end
+
+function om_input_api:discard()
+	assert(not self.closed, "Could not discard: Stream closed")
+	self.buffer = "",
+	self:setPosition(self.bufferstart)
+	self.bufferstart = nil
+end
+
+function om_input_api:discardLast()
+	assert(not self.closed, "Could not discard last char: Stream closed")
+	if string.len(buffer) <= 1 then
+		self:discard()
+	end
+	self.buffer = string.sub(self:getBuffer(), 1, -2)
+	self:setPosition(self.position - 1)
+end
+
+function om_input_api:read()
+	assert(not self.closed, "Could not read: Stream closed")
+	local readUsableChar = false
+	local c = ""
+	while not readUsableChar do
+		c = self.reader.read()
+		self.position = self.position + 1
+		if not c then
+			self:close()
+			return false
+		end
+		readUsableChar = (c > 31) or (c == 12)
+	end
+	
+	self.buffer = self.buffer .. string.char(c)
+	if not self.bufferstart then
+		self.bufferstart = self.position
+	end
+end
+
+function om_input_api:readRaw()
+	assert(not self.closed, "Could not read raw: Stream closed")
+	local sym = self.reader.read()
+	self.position = self.position + 1
+	if not sym then
+		self:close()
+		return false
+	end
+	return sym
+end
+
+function om_input_api:getBuffer()
+	assert(not self.closed, "Could not get buffer: Stream closed")
+	return self.buffer
+end
+
+function om_input_api:getLastBufferChar()
+	assert(not self.closed, "Could not get last char in buffer: Stream closed")
+	return string.sub(self:getBuffer(), -1, -1)
+end
+
+function om_input_api:setPosition(pos)
+	if self.closed and pos <= self.filesize then
+		self.closed = false
+	end
+	assert(pos <= self.filesize, "Could not set position: Position out of range")
+	self.reader:close()
+	self.reader = fs.open(self.path, "rb")
+	while self.position < pos do
+		self.reader:readRaw()
+	end
+end
+
+function om_input_api:getPosition()
+	return self.position
+end
+
+function om_input_api:close()
+	assert(not self.closed, "Could not close stream: Stream closed")
+	self.reader:close()
+	self.closed = true
+end
+
+function om_input_api:isClosed()
+	return self.closed
+end
+
+--[[
+	END INPUT API
+]]
+
+return om_input

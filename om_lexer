@@ -1,0 +1,275 @@
+local args = {...}
+local api = args[1]
+
+local om_lex = {}
+
+om_lex.tokens = {
+	["//"] = "TOK_COMMENT",
+	["=="] = "TOK_EQUALS",
+	["="] = "TOK_ASSIGN",
+	[">"] = "TOK_GT",
+	[">="] = "TOK_GE",
+	["<"] = "TOK_LT",
+	["<="] = "TOK_LE",
+	["*"] = "TOK_MUL",
+	["/"] = "TOK_DIV",
+	["+"] = "TOK_ADD",
+	["-"] = "TOK_SUB",
+	["=="] = "TOK_EQUALS",
+	["{"] = "TOK_BRACKET2_OPEN",
+	["}"] = "TOK_BRACKET2_CLOSE",
+	["("] = "TOK_BRACKET_OPEN",
+	[")"] = "TOK_BRACKET_CLOSE",
+	["package"] = "TOK_PACKAGE",
+	["import"] = "TOK_IMPORT",
+	["extends"] = "TOK_EXTENDS",
+	["implements"] = "TOK_IMPLEMENTS",
+	["."] = "TOK_DOT",
+	[";"] = "TOK_SEMI",
+	["static"] = "TOK_STATIC",
+	["public"] = "TOK_PUBLIC",
+	["private"] = "TOK_PRIVATE",
+	["protected"] = "TOK_PRIVATE",
+	["void"] = "TOK_VOID",
+	["number"] = "TOK_NUMBER",
+	["string"] = "TOK_STRING",
+	["char"] = "TOK_CHAR",
+	["map"] = "TOK_MAP",
+	["nil"] = "TOK_NIL",
+	["boolean"] = "TOK_BOOLEAN",
+	["if"] = "TOK_IF",
+	["elseif"] = "TOK_ELSEIF",
+	["else"] = "TOK_ELSE"
+}
+
+om_lex.generictokens = {
+	"TOK_DIGIT", "TOK_NAME", "TOK_SPACE"
+}
+
+om_lex.lexerr = {
+	"ERR_UNEXPECTED_TOKEN"
+}
+
+om_lex.tokenlengths = {}
+om_lex.tokensinvrt = {}
+
+for a, b in pairs(om_lex.tokens) do
+	om_lex.tokensinvrt[b] = a
+	if om_lex.tokenlengths[string.len(a)] do
+		om_lex.tokenlengths[string.len(a)][#om_lex.tokenlengths[string.len(a)] + 1] = b
+	else
+		om_lex.tokenlengths[string.len(a)] = {b}
+	end
+end
+
+--[[
+
+	** BEGIN LEXER API **
+
+]]
+
+function om_lex:getToken(buffer)
+	local afterChar
+	for a = #self.tokenlengths, 1, -1 do
+		if self.tokenlengths[a] then
+			local tok = string.sub(buffer, 1, a)
+			local afterChar = string.sub(buffer, a + 1, a + 1) or " "
+			for b = 1, #self.tokenlengths[a] do
+				local tokenname = self.tokenlengths[a]
+				if tokenname == self.tokens[tok] then
+					if self:isStringAlphaNumeric(tok) then
+						if not self:isAlphaNumeric(afterChar) then
+							return self.tokens[tok]
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+function om_lex:isAlphaNumeric(character)
+	if self:isAlphabetic(character) or self:isDigit(character) then
+		return true
+	end
+end
+
+function om_lex:isAlphabetic(character)
+	local b = string.byte(character)
+	if (b >= 65 and b <= 90) or (b >= 97 and b <= 122) then
+		return true
+	end
+	return false
+end
+	
+function om_lex:isNumeric(character)
+	local b = string.byte(character)
+	if b >= 48 and b <= 57 then
+		return true
+	end
+	return false
+end
+
+function om_lex:isStringNumeric(str)
+	for a = 1, #str do
+		if not self:isNumeric(str:sub(a, a)) then
+			return false
+		end
+	end
+	return true
+end
+
+function om_lex:isStringAlphabetic(str)
+	for a = 1, #str do
+		if not self:isAlphabetic(str:sub(a, a)) then
+			return false
+		end
+	end
+	return true
+end
+
+function om_lex:isStringAlphaNumeric(str)
+	for a = 1, #str do
+		if not (self:isAlphabetic(str:sub(a, a)) or self:isNumeric(str:sub(a, a))) then
+			return false
+		end
+	end
+	return true
+end
+
+function om_lex:readNumber()
+	self.lexstate.input:read()
+	local dotCount = 0
+	while self:isNumeric(self.lexstate.input:getLastBufferChar()) or self.lexstate.input:getLastBufferChar() == "." do
+		if self.lexstate.input:getLastBufferChar() == "." then
+			dotCount = dotCount + 1
+			if dotCount > 1 then
+				error("Could not parse number: Multiple dots")
+			end
+		end
+		self.lexstate.input:read()
+	end
+	self.lexstate.input:discardLast()
+	return self.lexstate.input:flushGetBuffer()
+end
+
+function om_lex:readName()
+	self.lexstate.input:read()
+	while self:isAlphaNumeric(self.lexstate.input:getLastBufferChar()) or (self.lexstate.input:getLastBufferChar() == "_") do
+		self.lexstate.input:read()
+	end
+	self.lexstate.input:discardLast()
+	return self.lexstate.input:flushGetBuffer()
+end
+
+function om_lex:readString()
+	local input = self.lexstate.input
+	input:read()
+	local startedWith = input:getLastBufferChar()
+	input:flush()
+	input:read()
+	local inString = true
+	local str = ""
+	while inString do
+		if input:getLastBufferChar() == startedWith then
+			inString = false
+			break
+		end
+		
+		if input:getLastBufferChar() == "\\" then
+			input:read()
+			if input:getLastBufferChar() == "n" then
+				str = str .. "\n"
+			elseif input:getLastBufferChar() == "\\" then
+				str = str .. "\\"
+			elseif input:getLastBufferChar() == '"' then
+				str = str .. '"'
+			elseif input:getLastBufferChar() == "'" then
+				str = str .. "'"
+			end
+		else
+			str = str .. input:getLastBufferChar()
+		end
+		
+		input:read()
+		if input.isClosed() then
+			error("Error parsing string: unfinished string")
+		end
+	end
+	
+	input:flush()
+	return str
+end
+
+function om_lex:lexer()
+	assert(self:canRun(), "Lexer can't run: Not Initialized")
+	
+	self.lexstate.input:flush()
+	self.lexstate.input:readChar()
+	
+	local maxlength = self.lexstate.maxtokenlength
+	
+	if self.lexstate.input:getBuffer() == " " or self.lexstate.input:getBuffer() == "\n" then
+		return "TOK_SPACE"
+	else
+		-- check tokens
+		for a = 1, maxlength do
+			self.lexstate.input:read()
+		end
+		
+		self.lexstate.input:read()
+		
+		local token = self:getToken(self.lexstate.input:getBuffer(), )
+		self.lexstate.input:discard()
+		
+		if token then
+			return token
+		end
+		
+		-- check is name
+		if self.isAlphabetic(self.lexstate.input:getBuffer()) then
+			self.lexstate.input:discard()
+			return "TOK_NAME", self:readName()
+		end
+		
+		-- check is digit
+		self.lexstate.input:read()
+		if self:isDigit(self.lexstate.input:getBuffer()) then
+			self.lexstate.input:discard()
+			return "TOK_NUMBER", self:readNumber()
+		end
+		
+		-- check is string
+		if self.lexstate.input:getBuffer() == '"' or self.lexstate.input:getBuffer() == "'" then
+			self.lexstate.input:discard()
+			return "TOK_STRING", self:readString()
+		end
+		
+		return "ERR_UNEXPECTED_TOKEN"
+	end
+end
+
+function om_lex:canRun()
+	return self.lexstate.input ~= nil
+end
+
+function om_lex:initialize(input)
+	self.lexstate.input = input
+end
+
+function om_lex:resetState()
+	self.lexstate = {
+		c = "",
+		input = {},
+		characternum = 0,
+		linenum = 0,
+	}
+end
+
+--[[
+
+	** END LEXER API **
+
+]]
+
+return om_lex

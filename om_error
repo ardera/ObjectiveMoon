@@ -1,0 +1,21 @@
+local om_error = {}
+
+local errmsgs = {
+	["unexpectedsymbol"] = "Unexpected Symbol",
+	["unexpectedtoken"] = "Unexpected Token",
+	["toomanysyntaxlevels"] = "Too Many Syntax Levels"
+}
+
+function om_error.throwUnexpectedSymbol(...)
+	error(errmsgs["unexpectedsymbol"] .. " " .. table.concat({...}, " "))
+end
+
+function om_error.throwUnexpectedToken(...)
+	error(errmsgs["unexpectedtoken"] .. " " .. table.concat({...}, " "))
+end
+
+function om_error.throwManySyntaxLevels(...)
+	err(errmsgs["unexpectedtoken"] .. " " .. table.concat({...}, " "))
+end
+
+return om_error
